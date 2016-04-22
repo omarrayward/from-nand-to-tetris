@@ -1,0 +1,114 @@
+// Note this implementation of the CPU doesn't use the given Register A
+// and D so in order to test upload `CPU-external.tst`
+// Also this implementation uses Mux8Way, a chip not required by any project
+// but I found useful to have.
+
+// This file is part of www.nand2tetris.org
+// and the book "The Elements of Computing Systems"
+// by Nisan and Schocken, MIT Press.
+// File name: projects/05/CPU.hdl
+
+/**
+ * The Hack CPU (Central Processing unit), consisting of an ALU,
+ * two registers named A and D, and a program counter named PC.
+ * The CPU is designed to fetch and execute instructions written in
+ * the Hack machine language. In particular, functions as follows:
+ * Executes the inputted instruction according to the Hack machine
+ * language specification. The D and A in the language specification
+ * refer to CPU-resident registers, while M refers to the external
+ * memory location addressed by A, i.e. to Memory[A]. The inM input
+ * holds the value of this location. If the current instruction needs
+ * to write a value to M, the value is placed in outM, the address
+ * of the target location is placed in the addressM output, and the
+ * writeM control bit is asserted. (When writeM==0, any value may
+ * appear in outM). The outM and writeM outputs are combinational:
+ * they are affected instantaneously by the execution of the current
+ * instruction. The addressM and pc outputs are clocked: although they
+ * are affected by the execution of the current instruction, they commit
+ * to their new values only in the next time step. If reset==1 then the
+ * CPU jumps to address 0 (i.e. pc is set to 0 in next time step) rather
+ * than to the address resulting from executing the current instruction.
+ */
+
+CHIP CPU {
+
+    IN  inM[16],         // M value input  (M = contents of RAM[A])
+        instruction[16], // Instruction for execution
+        reset;           // Signals whether to re-start the current
+                         // program (reset==1) or continue executing
+                         // the current program (reset==0).
+
+    OUT outM[16],        // M value output
+        writeM,          // Write to M?
+        addressM[15],    // Address in data memory (of M)
+        pc[15];          // address of next instruction
+
+    PARTS:
+    // 1. Divide instruction into its components
+    // if A instruction => instructionType == 1
+    // if C instruction => instructionType == 0
+    And (a=true, b=instruction[15], out=isInstructionC);
+    Not (in=isInstructionC, out=isInstructionA);
+
+    // if C instruction the 4th bit of instruction indicates which input to the ALU
+    // either input from memory or from registerA
+    Or (a=instruction[12], b=false, out=inputType);
+
+    // Set the appropriate bit values for the ALU computation
+    Or (a=instruction[11], b=false, out=zx);
+    Or (a=instruction[10], b=false, out=nx);
+    Or (a=instruction[9], b=false, out=zy);
+    Or (a=instruction[8], b=false, out=ny);
+    Or (a=instruction[7], b=false, out=f);
+    Or (a=instruction[6], b=false, out=no);
+
+    // Set the appropriate values for where we need to store the output of Register
+    And (a=instruction[5], b=isInstructionC, out=storeInA);
+    And (a=instruction[4], b=isInstructionC, out=storeInD);
+    And (a=instruction[3], b=isInstructionC, out=writeM);
+
+    // Compute the 8 bools for different jump options
+    // No jump
+    Not (in=true, out=nojmp);
+    // Jump
+    Not (in=false, out=jmp);
+    // is Zero
+    And (a=true, b=zr, out=jeq);
+    // is Neg
+    And (a=true, b=ng, out=jlt);
+    // is not Zero
+    Not (in=zr, out=jne);
+    // is Pos
+    Not (in=jle, out=jgt);
+    // is Zero or Pos
+    Or (a=zr, b=jgt, out=jge);
+    // is Zero or Neg
+    Or (a=zr, b=ng, out=jle);
+
+    // Compute whether we need to jump in the next instruction
+    Mux8Way (a=nojmp, b=jgt, c=jeq, d=jge, e=jlt, f=jne, g=jle, h=jmp, sel=instruction[0..2], out=maybeJump);
+    And (a=isInstructionC, b=maybeJump, out=shouldJump);
+
+    // possible value to load to registerA
+    Mux16 (a=outALU, b=instruction, sel=isInstructionA, out=registerAVal);
+    // Only modify value of register A if isInstructionA or storeInA
+    Or (a=isInstructionA, b=storeInA, out=shouldLoadA);
+    Register (in=registerAVal, load=shouldLoadA, out=registerA, out[0..14]=addressM);
+
+    // Set value of register D to output of ALU if storeInD is 1
+    Register (in=outALU, load=storeInD, out=registerD);
+
+    // if inputType is 1 then use M as the ALU input, otherwise user Register A
+    // as the input
+    Mux16 (a=registerA, b=inM, sel=inputType, out=inputALU);
+
+    ALU (x=registerD, y=inputALU, zx=zx, nx=nx, zy=zy ,ny=ny ,f=f ,no=no, zr=zr, ng=ng, out=outALU);
+
+    Or16 (a=false, b=outALU, out=outM);
+
+    // Calculate the counter. Remember that reset has priority over load and
+    // load has priority over inc, that's why we set inc to true (always the default
+    // action) should be to increase the counter.
+    PC (in=registerA,load=shouldJump,inc=true,reset=reset, out[0..14]=pc);
+
+}
