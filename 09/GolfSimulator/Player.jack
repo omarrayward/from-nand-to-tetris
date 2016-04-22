@@ -1,0 +1,21 @@
+class Player {
+
+    constructor Player new() {
+        do Output.printString("player");
+        return this;
+    }
+
+    function int playHole(int hole) {
+        var int score;
+
+        do Output.printString("What is the score in hole ");
+        do Output.printInt(hole);
+        let score =  Keyboard.readInt("? ");
+        return score;
+    }
+
+    method void dispose() {
+        do Memory.deAlloc(this);
+        return;
+    }
+}
