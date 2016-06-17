@@ -215,8 +215,7 @@ def _compile_statements(file, token_gen):
                          (KEYWORD, 'do'),
                          (KEYWORD, 'return')]
 
-    token_type, token_val = (_peek_stack_head(token_gen) or
-                             _peek_stack_head(token_gen))
+    token_type, token_val = _peek_stack_head(token_gen)
     while (token_type, token_val) in _statement_tokens:
         {
             'let': lambda: _compile_let(file, token_gen),
@@ -225,8 +224,7 @@ def _compile_statements(file, token_gen):
             'if': lambda: _compile_if(file, token_gen),
             'return': lambda: _compile_return(file, token_gen)
         }[token_val]()
-        token_type, token_val = (_peek_stack_head(token_gen) or
-                                 _peek_stack_head(token_gen))
+        token_type, token_val = _peek_stack_head(token_gen)
 
     _modify_indent(-2)
     _write(file, '</statements>')
